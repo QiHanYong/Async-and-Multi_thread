@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 
 public class Book
 {
-    public string Title { get; set; }
+    public string Title { get; set; }  // { get; set; }：调用时自动读取或设置值
     public decimal Price { get; set; }
-    public int Inventory { get; set; }
+    public int Inventory { get; set; }  // 库存数量
 }
 
 public class Database
@@ -32,6 +32,30 @@ public class Database
 
         // TODO: 使用 lock 语句保证线程安全
         // 提示：在 lock 块中查找书籍并更新库存，若库存不足则输出提示
+        lock (_lock)
+        {
+            bool bookFound = false;
+            foreach (Book book in _books)
+            {
+                if (book.Title == title)
+                {
+                    bookFound = true;
+                    if (book.Inventory + quantity >= 0)  // 允许增减库存
+                    {
+                        book.Inventory += quantity;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"库存不足！书名: 《{book.Title}》，当前库存: {book.Inventory}，尝试修改量: {quantity}");
+                    }
+                    break;  // 找到书后就直接退出循环
+                }
+            }
+            if (!bookFound)  // 一次性处理未找到书情况
+            {
+                throw new KeyNotFoundException($"找不到书籍: 《{title}》");
+            }
+        }
     }
 }
 
@@ -42,6 +66,20 @@ public class BookStore
     // TODO: 实现异步购书方法CheckoutAsync，调用 UpdateInventoryAsync
     public async Task CheckoutAsync(string bookTitle, int quantity)
     {
+        try
+        {
+            await UpdateInventoryAsync(bookTitle, -quantity);  // 减少库存（quantity应为负数，例如-1表示购买1本）
+            await Task.Delay(100);  // 模拟支付/物流延迟
+            Console.WriteLine($"已成功购买 {quantity} 本《{bookTitle}》");
+        }
+        catch (InvalidOperationException ex)  // 假设UpdateInventoryAsync在库存不足时抛出异常
+        {
+            Console.WriteLine($"购买失败: {ex.Message}");
+        }
+        catch (KeyNotFoundException ex)  // 假设UpdateInventoryAsync在找不到书时抛出异常
+        {
+            Console.WriteLine($"购买失败: {ex.Message}");
+        }
     }
 
     public async Task SimulateMultipleUsers()
@@ -59,9 +97,22 @@ public class BookStore
         // 提示：创建多个 Task 调用 CheckoutAsync，并传入不同书名和数量
         var tasks = new List<Task>
         {
-            
+            CheckoutAsync("C#入门", 2),
+            CheckoutAsync("C#入门", 3),
+            CheckoutAsync("异步编程", 1),
+            CheckoutAsync("异步编程", 2),
+            CheckoutAsync("异步编程", 3)
         };
 
+        try
+        {
+            await Task.WhenAll(tasks);  // 显式等待所有任务
+            Console.WriteLine("所有购买完成！");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"购买失败: {ex.Message}");
+        }
 
         Console.WriteLine("\n购买后库存：");
         books = await _db.GetBooksAsync();
